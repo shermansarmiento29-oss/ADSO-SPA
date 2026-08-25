@@ -20,11 +20,20 @@ const S_MASAJE_DESCONTRAC = 4;
 const S_EXFOLIACION       = 5;
 const S_ANTIEDAD          = 6;
 
-function agregarEmpleado(array &$empleados, string $nombre, string $especialidad): void {
+function crearCatalogoEspecialidades(): array {
+    return [
+        'Cosmetología facial',
+        'Manicure y pedicure',
+        'Masajes',
+        'Estética corporal',
+    ];
+}
+
+function agregarEmpleado(array &$empleados, string $nombre, array $especialidades): void {
     $empleados[] = [
-        'nombre'       => $nombre,
-        'especialidad' => $especialidad,
-        'citas'        => [],
+        'nombre'         => $nombre,
+        'especialidades' => $especialidades,
+        'citas'          => [],
     ];
 }
 
@@ -40,10 +49,10 @@ function agregarCita(array &$empleados, int $idxEmpleado, string $cliente, strin
 function cargarDatosPrueba(): array {
     $empleados = [];
 
-    agregarEmpleado($empleados, 'Ana Torres',      'Cosmetología facial');
-    agregarEmpleado($empleados, 'Camila Rios',     'Manicure y pedicure');
-    agregarEmpleado($empleados, 'Laura Gomez',     'Masajes');
-    agregarEmpleado($empleados, 'Diego Salazar',   'Estética corporal');
+    agregarEmpleado($empleados, 'Ana Torres',      ['Cosmetología facial']);
+    agregarEmpleado($empleados, 'Camila Rios',     ['Manicure y pedicure']);
+    agregarEmpleado($empleados, 'Laura Gomez',     ['Masajes']);
+    agregarEmpleado($empleados, 'Diego Salazar',   ['Estética corporal', 'Masajes']);
 
     agregarCita($empleados, 0, 'Maria Perez',   'lunes',    8, [S_LIMPIEZA_FACIAL]);
     agregarCita($empleados, 0, 'Pedro Ruiz',    'lunes',    9, [S_MANICURE]);
@@ -106,9 +115,26 @@ function leerHora(): int {
 }
 
 function mostrarEmpleados(array $empleados): void {
-    echo str_pad("#", 4) . str_pad("Nombre", 25) . "Especialidad\n";
+    echo str_pad("#", 4) . str_pad("Nombre", 25) . "Especialidades\n";
     foreach ($empleados as $i => $empleado) {
-        echo str_pad((string)($i + 1), 4) . str_pad($empleado['nombre'], 25) . $empleado['especialidad'] . "\n";
+        echo str_pad((string)($i + 1), 4) . str_pad($empleado['nombre'], 25) . implode(', ', $empleado['especialidades']) . "\n";
+    }
+}
+
+function mostrarEspecialidades(array $catalogoEspecialidades): void {
+    echo str_pad("#", 4) . "Especialidad\n";
+    foreach ($catalogoEspecialidades as $i => $especialidad) {
+        echo str_pad((string)($i + 1), 4) . $especialidad . "\n";
+    }
+}
+
+function leerNumeroEspecialidad(array $catalogoEspecialidades): int {
+    while (true) {
+        $numero = leerTexto("Seleccione el numero de especialidad: ");
+        if (ctype_digit($numero) && (int)$numero >= 1 && (int)$numero <= count($catalogoEspecialidades)) {
+            return (int)$numero - 1;
+        }
+        echo "Numero de especialidad invalido.\n";
     }
 }
 
@@ -140,13 +166,62 @@ function leerNumeroServicio(array $catalogoServicios): int {
     }
 }
 
-function registrarEmpleado(array &$empleados): void {
+function registrarEmpleado(array &$empleados, array $catalogoEspecialidades): void {
     do {
         $nombre = leerTexto("Nombre del empleado: ");
-        $especialidad = leerTexto("Especialidad: ");
-        agregarEmpleado($empleados, $nombre, $especialidad);
+
+        $especialidades = [];
+        do {
+            echo "\nEspecialidades disponibles:\n";
+            mostrarEspecialidades($catalogoEspecialidades);
+            $idxEspecialidad = leerNumeroEspecialidad($catalogoEspecialidades);
+            $nombreEspecialidad = $catalogoEspecialidades[$idxEspecialidad];
+
+            if (in_array($nombreEspecialidad, $especialidades)) {
+                echo "Esa especialidad ya fue asignada a este empleado.\n";
+            } else {
+                $especialidades[] = $nombreEspecialidad;
+            }
+        } while (leerSiNo("¿Desea agregar otra especialidad? (s/n): "));
+
+        agregarEmpleado($empleados, $nombre, $especialidades);
         echo "Empleado registrado.\n";
     } while (leerSiNo("¿Desea registrar otro empleado? (s/n): "));
+}
+
+function calcularDuracionCita(array $cita, array $catalogoServicios): int {
+    $duracion = 0;
+    foreach ($cita['servicios'] as $idxServicio) {
+        $duracion += $catalogoServicios[$idxServicio]['duracion'];
+    }
+    return $duracion;
+}
+
+function haySolapeEmpleado(array $empleados, int $idxEmpleado, string $dia, int $inicioNuevo, int $finNuevo, array $catalogoServicios): bool {
+    foreach ($empleados[$idxEmpleado]['citas'] as $cita) {
+        if ($cita['dia'] !== $dia) continue;
+        $inicioExistente = $cita['hora'];
+        $finExistente = $cita['hora'] + calcularDuracionCita($cita, $catalogoServicios);
+        if ($inicioNuevo < $finExistente && $inicioExistente < $finNuevo) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function haySolapeCliente(array $empleados, string $cliente, string $dia, int $inicioNuevo, int $finNuevo, array $catalogoServicios): bool {
+    foreach ($empleados as $empleado) {
+        foreach ($empleado['citas'] as $cita) {
+            if ($cita['dia'] !== $dia) continue;
+            if (strtolower($cita['cliente']) !== strtolower($cliente)) continue;
+            $inicioExistente = $cita['hora'];
+            $finExistente = $cita['hora'] + calcularDuracionCita($cita, $catalogoServicios);
+            if ($inicioNuevo < $finExistente && $inicioExistente < $finNuevo) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 function registrarCita(array &$empleados, array $catalogoServicios): void {
@@ -160,26 +235,37 @@ function registrarCita(array &$empleados, array $catalogoServicios): void {
     $idxEmpleado = leerNumeroEmpleado($empleados);
 
     $cliente = leerTexto("Nombre del cliente: ");
-    $dia = leerDia();
-    $hora = leerHora();
 
-    $servicios = [];
     do {
-        echo "\nCatalogo de servicios:\n";
-        mostrarCatalogo($catalogoServicios);
-        $servicios[] = leerNumeroServicio($catalogoServicios);
-    } while (leerSiNo("¿Desea agregar otro servicio a esta cita? (s/n): "));
+        $dia = leerDia();
+        $hora = leerHora();
+
+        $servicios = [];
+        do {
+            echo "\nCatalogo de servicios:\n";
+            mostrarCatalogo($catalogoServicios);
+            $servicios[] = leerNumeroServicio($catalogoServicios);
+        } while (leerSiNo("¿Desea agregar otro servicio a esta cita? (s/n): "));
+
+        $duracion = 0;
+        foreach ($servicios as $idxServicio) {
+            $duracion += $catalogoServicios[$idxServicio]['duracion'];
+        }
+        $horaFin = $hora + $duracion;
+
+        $conflictoEmpleado = haySolapeEmpleado($empleados, $idxEmpleado, $dia, $hora, $horaFin, $catalogoServicios);
+        $conflictoCliente = haySolapeCliente($empleados, $cliente, $dia, $hora, $horaFin, $catalogoServicios);
+
+        if ($conflictoEmpleado) {
+            echo "\nEse empleado ya tiene una cita ese dia que se cruza con este horario. Ingrese otro dia u hora.\n";
+        }
+        if ($conflictoCliente) {
+            echo "\nEl cliente ya tiene otra cita ese dia que se cruza con este horario. Ingrese otro dia u hora.\n";
+        }
+    } while ($conflictoEmpleado || $conflictoCliente);
 
     agregarCita($empleados, $idxEmpleado, $cliente, $dia, $hora, $servicios);
     echo "Cita registrada.\n";
-}
-
-function calcularDuracionCita(array $cita, array $catalogoServicios): int {
-    $duracion = 0;
-    foreach ($cita['servicios'] as $idxServicio) {
-        $duracion += $catalogoServicios[$idxServicio]['duracion'];
-    }
-    return $duracion;
 }
 
 function calcularTotalCita(array $cita, array $catalogoServicios): int {
@@ -363,6 +449,7 @@ function liquidacionComisiones(array $empleados, array $catalogoServicios): void
 }
 
 $catalogoServicios = crearCatalogoServicios();
+$catalogoEspecialidades = crearCatalogoEspecialidades();
 $empleados = [];
 $datosPruebaCargados = false;
 
@@ -398,7 +485,7 @@ while (true) {
                 echo "Esta opcion no esta disponible porque ya se cargaron los datos de prueba.\n";
                 break;
             }
-            registrarEmpleado($empleados);
+            registrarEmpleado($empleados, $catalogoEspecialidades);
             break;
 
         case '2':
